@@ -1,15 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/jamieholliday/gator/internal/config"
+	"github.com/jamieholliday/gator/internal/database"
 )
+
+// needs importing for but not you dont use it directly
+import _ "github.com/lib/pq"
 
 type state struct {
 	cfg *config.Config
+	db  *database.Queries
 }
 
 func main() {
@@ -23,11 +29,16 @@ func main() {
 		cfg: &configFile,
 	}
 
+	db, err := sql.Open("postgres", programState.cfg.DbUrl)
+	dbQueries := database.New(db)
+	programState.db = dbQueries
+
 	cmds := commands{
 		registeredCommands: make(map[string]func(*state, command) error),
 	}
 
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
 
 	cliArgs := os.Args
 
