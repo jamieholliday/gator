@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -8,14 +9,24 @@ import (
 
 	"github.com/jamieholliday/gator/internal/config"
 	"github.com/jamieholliday/gator/internal/database"
-)
 
-// needs importing for but not you dont use it directly
-import _ "github.com/lib/pq"
+	// needs importing for but not you dont use it directly
+	_ "github.com/lib/pq"
+)
 
 type state struct {
 	cfg *config.Config
 	db  *database.Queries
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(s *state, cmd command) error {
+	return func(s *state, cmd command) error {
+		user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+		if err != nil {
+			fmt.Errorf("Error getting user by name %s: %v\n", s.cfg.CurrentUserName, err)
+		}
+		return handler(s, cmd, user)
+	}
 }
 
 func main() {
@@ -42,10 +53,10 @@ func main() {
 	cmds.register("reset", handlerReset)
 	cmds.register("users", handlerGetAllUsers)
 	cmds.register("agg", handlerAgg)
-	cmds.register("addfeed", handlerAddFeed)
+	cmds.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	cmds.register("feeds", handlerGetAllFeeds)
-	cmds.register("follow", handlerFollow)
-	cmds.register("following", handlerGetFeedFollows)
+	cmds.register("follow", middlewareLoggedIn(handlerFollow))
+	cmds.register("following", middlewareLoggedIn(handlerGetFeedFollows))
 
 	cliArgs := os.Args
 
