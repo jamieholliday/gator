@@ -11,7 +11,7 @@ import (
 
 const getFeedByUrl = `-- name: GetFeedByUrl :one
 SELECT
-    feeds.id, feeds.created_at, feeds.updated_at, feeds.name, feeds.url, feeds.user_id
+    feeds.id, feeds.created_at, feeds.updated_at, feeds.name, feeds.url, feeds.user_id, feeds.last_fetched_at
 FROM
     feeds
 WHERE
@@ -28,6 +28,7 @@ func (q *Queries) GetFeedByUrl(ctx context.Context, url string) (Feed, error) {
 		&i.Name,
 		&i.Url,
 		&i.UserID,
+		&i.LastFetchedAt,
 	)
 	return i, err
 }

@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"fmt"
+	"github.com/jamieholliday/gator/internal/database"
 	"html"
 	"io"
 	"net/http"
+	"time"
 )
 
 type RSSFeed struct {
@@ -25,7 +28,7 @@ type RSSItem struct {
 	PubDate     string `xml:"pubDate"`
 }
 
-func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
+func FetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 	request, err := http.NewRequestWithContext(ctx, "GET", feedUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -64,15 +67,57 @@ func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 
 }
 
-func handlerAgg(s *state, cmd command) error {
-
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-
-	if err != nil {
-		return fmt.Errorf("errof fetching feed: %w", err)
+func scrapeFeeds(s *state) error {
+	nextFeed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil || err == sql.ErrNoRows {
+		return fmt.Errorf("Error getting next feed to fetch: %w", err)
 	}
 
-	fmt.Println(feed)
+	err = s.db.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		UpdatedAt:     time.Now(),
+		LastFetchedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:            nextFeed.ID,
+	})
+
+	if err != nil {
+		return fmt.Errorf("Error marking feed fetched: %w", err)
+	}
+
+	feed, err := FetchFeed(context.Background(), nextFeed.Url)
+
+	if err != nil {
+		return fmt.Errorf("Error getting feed by URL %s: %w", nextFeed.Url, err)
+	}
+
+	for _, item := range feed.Channel.Item {
+		// Process each item in the feed
+		fmt.Printf("%s\n", item.Title)
+	}
+
+	return nil
+
+}
+
+func handlerAgg(s *state, cmd command) error {
+	if len(cmd.Args) != 1 {
+		// remturn an error
+		return fmt.Errorf("usage: %s <time_between_reqs>", cmd.Name)
+	}
+
+	time_between_reqs, err := time.ParseDuration(cmd.Args[0])
+
+	if err != nil {
+		return fmt.Errorf("error parsing duration: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every %s\n", time_between_reqs)
+
+	ticker := time.NewTicker(time_between_reqs)
+
+	for ; ; <-ticker.C {
+		fmt.Println("Scraping feeds...")
+		scrapeFeeds(s)
+	}
 
 	return nil
 }
