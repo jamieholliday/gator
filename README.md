@@ -15,15 +15,17 @@ go install github.com/jamieholliday/gator@latest
 
 Make sure your Go bin directory is in your PATH.
 
-2. Create a config file at the root of your machine called
+2. Build it `go build`
+
+3. Create a config file at the root of your machine called
 `~/.gatorconfig.json`. It should contain the url to your postgress db
 
 {"db_url":"postgres://dbname:@localhost:5432/gator?sslmode=disable"}
 
-3. Start your database
+4. Start your database
 `Make db-start`
 
-4. Use the following commands to interact with the cli
+5. Use the following commands to interact with the cli
 
 ## Commands
 - `gator register` - Create a new account
