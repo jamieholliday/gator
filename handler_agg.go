@@ -67,6 +67,30 @@ func FetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 
 }
 
+func parsePublishedDate(dateStr string) time.Time {
+	// Try RFC1123 format first (standard RSS date format)
+	t, err := time.Parse(time.RFC1123, dateStr)
+	if err == nil {
+		return t
+	}
+
+	// Try RFC1123Z format (with numeric timezone)
+	t, err = time.Parse(time.RFC1123Z, dateStr)
+	if err == nil {
+		return t
+	}
+
+	// Try RFC822 format (another common format)
+	t, err = time.Parse(time.RFC822, dateStr)
+	if err == nil {
+		return t
+	}
+
+	// If all parsing attempts fail, return current time
+	fmt.Printf("Failed to parse date: %s\n", dateStr)
+	return time.Now()
+}
+
 func scrapeFeeds(s *state) error {
 	nextFeed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil || err == sql.ErrNoRows {
@@ -91,11 +115,28 @@ func scrapeFeeds(s *state) error {
 
 	for _, item := range feed.Channel.Item {
 		// Process each item in the feed
-		fmt.Printf("%s\n", item.Title)
+		fmt.Printf("Feed item: %s\n", item)
+
+		_, err := s.db.CreatePost(context.Background(), database.CreatePostParams{
+			FeedID:      nextFeed.ID,
+			Title:       item.Title,
+			Description: item.Description,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Url:         item.Link,
+			PublishedAt: parsePublishedDate(item.PubDate),
+		})
+		if err != nil {
+			// PostgreSQL error code 23505 is for unique_violation
+			if err.Error() == "pq: duplicate key value violates unique constraint" || err.Error() == "ERROR: duplicate key value violates unique constraint" {
+				fmt.Printf("Post with URL %s already exists, skipping...\n", item.Link)
+				continue
+			} else {
+				return fmt.Errorf("Error creating post: %w", err)
+			}
+		}
 	}
-
 	return nil
-
 }
 
 func handlerAgg(s *state, cmd command) error {
@@ -114,7 +155,7 @@ func handlerAgg(s *state, cmd command) error {
 
 	ticker := time.NewTicker(time_between_reqs)
 
-	for ; ; <-ticker.C {
+	for range ticker.C {
 		fmt.Println("Scraping feeds...")
 		scrapeFeeds(s)
 	}
